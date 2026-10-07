@@ -1,0 +1,15 @@
+# 로컬 개발용 PostgreSQL. `pnpm db:up`으로 실행합니다.
+# 호스트 포트를 5433으로 둔 이유: 맥에 이미 Postgres가 5432를 쓰고 있어도 충돌하지 않게.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: booth
+      POSTGRES_PASSWORD: booth
+      POSTGRES_DB: booth_agent
+    ports:
+      - "5433:5432"
+    volumes:
+      - booth-agent-db:/var/lib/postgresql/data
+volumes:
+  booth-agent-db:

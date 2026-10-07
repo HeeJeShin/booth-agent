@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    // NestJS는 CommonJS 모듈 시스템을 기본으로 씁니다.
+    "module": "commonjs",
+    "target": "ES2023",
+    // ⭐ NestJS 핵심 옵션 2개
+    // - experimentalDecorators: @Controller, @Injectable 같은 데코레이터 문법을 켭니다.
+    // - emitDecoratorMetadata: 생성자 파라미터 "타입 정보"를 런타임에 남깁니다.
+    //   Nest의 의존성 주입(DI)은 이 메타데이터를 보고 "어떤 클래스를 넣어줄지" 결정합니다.
+    //   그래서 esbuild/tsx처럼 이 메타데이터를 안 남기는 도구로 실행하면 DI가 깨집니다.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strict": true,
+    // DTO 클래스 필드는 class-transformer가 채워주므로 생성자 초기화 검사를 끕니다.
+    "strictPropertyInitialization": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+    "declaration": false,
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.spec.ts", "vitest.config.ts"]
+}
