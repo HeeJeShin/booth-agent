@@ -14,6 +14,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Injectable, Logger } from "@nestjs/common";
 import { AgentTools, TOOLS, WRITE_TOOLS } from "./agent.tools";
 import { Conversation } from "./conversation.store";
+import { createMockClient } from "./mock-client";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
 // 화면(SSE)으로 내보내는 이벤트 종류
@@ -37,6 +38,11 @@ export class AgentService {
 
   // API 키가 없어도 REST API는 돌아가도록, Claude 클라이언트는 처음 쓸 때 만듭니다.
   private getClient(): Anthropic {
+    // 목 모드: API 키 없이(비용 없이) 가짜 모델로 루프·도구·승인 흐름을 돌려봅니다. → mock-client.ts
+    if (!this.client && process.env.USE_MOCK_AGENT === "true") {
+      this.logger.warn("USE_MOCK_AGENT=true → 실제 Claude 대신 목 클라이언트를 사용합니다.");
+      this.client = createMockClient();
+    }
     if (!this.client && !process.env.ANTHROPIC_API_KEY) {
       throw new Error(".env에 ANTHROPIC_API_KEY를 넣고 서버를 다시 시작해주세요.");
     }

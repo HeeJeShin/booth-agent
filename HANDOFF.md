@@ -28,8 +28,9 @@ GitHub: https://github.com/HeeJeShin/booth-agent (public, 브랜치 `master`)
 - 트랜잭션 + `SELECT ... FOR UPDATE`로 초과 판매 방지 → **50건 동시 신청 중 39건 성공, 11건 409, 남은 부스 0** (실측)
 - 에이전트 루프 수동 구현(`src/agent/agent.service.ts`), 쓰기 도구는 사람 승인 후 실행, SSE 스트리밍(`POST /agent/chat`)
 - 도구 입력을 REST와 **같은 DTO로 검증**
-- Vitest 8개 통과
-- ⚠️ **남은 것: 실제 Claude 호출 테스트.** `.env`의 `ANTHROPIC_API_KEY`가 비어 있어 아직 실제로 돌려보지 못했습니다. 키를 넣고 README의 curl 예시로 대화 → 신청 → 승인 흐름을 확인해야 합니다.
+- Vitest 12개 통과
+- 목 모드(`USE_MOCK_AGENT=true`, `src/agent/mock-client.ts`): 키 없이 규칙 기반 가짜 모델로 루프·도구(실제 DB)·승인·SSE 흐름 확인 가능. curl로 대화 → 승인 대기 → 거절까지 확인함
+- ⚠️ **남은 것: 실제 Claude 호출 테스트.** `.env`의 `ANTHROPIC_API_KEY`가 비어 있어 아직 실제로 돌려보지 못했습니다. 목 모드로 흐름은 확인했으니, 키가 생기면 `USE_MOCK_AGENT=false`로 바꾸고 README의 curl 예시로 대화 → 신청 → 승인 흐름을 확인해야 합니다.
 
 ## 2단계 — 🚧 시작 직후 멈춤
 

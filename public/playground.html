@@ -1,0 +1,167 @@
+<!doctype html>
+<!--
+  에이전트 확인용 테스트 화면 → http://localhost:3100/playground.html
+  빌드 없는 HTML 한 장입니다. 진짜 프론트(Next.js)를 만들기 전에 /agent/chat 흐름을 눈으로 보려고 둡니다.
+
+  ⭐ SSE를 POST로 받는 법: EventSource는 GET만 되므로, fetch 응답 body를 스트림으로 읽고
+     빈 줄("\n\n") 단위로 잘라서 "event: ..." / "data: ..." 줄을 직접 파싱합니다.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent Playground</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f6f4; --card: #fff; --line: #ddd; --muted: #777; --me: #2f6fde; --tool: #eef3ea; --err: #c0392b; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #18181a; --card: #232326; --line: #3a3a3e; --muted: #999; --me: #4d84e8; --tool: #26302a; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 system-ui, sans-serif; background: var(--bg); }
+  main { max-width: 720px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: 100dvh; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+  header small { color: var(--muted); font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+  .me { align-self: flex-end; background: var(--me); color: #fff; }
+  .ai { align-self: flex-start; background: var(--card); border: 1px solid var(--line); }
+  .tool { align-self: flex-start; font: 12px ui-monospace, monospace; background: var(--tool); padding: 4px 8px; border-radius: 6px; }
+  .error { align-self: flex-start; color: var(--err); font-size: 13px; }
+  .approval { align-self: stretch; border: 2px solid var(--me); border-radius: 12px; padding: 12px; background: var(--card); }
+  .approval pre { margin: 6px 0 10px; font-size: 13px; white-space: pre-wrap; }
+  form { display: flex; gap: 8px; padding-top: 8px; }
+  input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font: inherit; background: var(--card); color: inherit; }
+  button { padding: 8px 14px; border: 0; border-radius: 10px; font: inherit; cursor: pointer; background: var(--me); color: #fff; }
+  button.secondary { background: transparent; color: inherit; border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <strong>Agent Playground</strong>
+    <small id="cid">새 대화</small>
+    <button class="secondary" id="reset" type="button">새 대화</button>
+  </header>
+  <div id="log"></div>
+  <form id="form">
+    <input id="input" placeholder="예: 전시회 목록 보여줘" autocomplete="off" autofocus />
+    <button id="send">보내기</button>
+  </form>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let conversationId = null;
+  let busy = false;
+
+  function add(cls, text) {
+    const el = document.createElement("div");
+    el.className = cls;
+    el.textContent = text;
+    $("log").append(el);
+    $("log").scrollTop = $("log").scrollHeight;
+    return el;
+  }
+
+  function setBusy(v) {
+    busy = v;
+    $("send").disabled = v;
+    $("input").disabled = v;
+  }
+
+  // body: { message } 또는 { decision }
+  async function send(body) {
+    setBusy(true);
+    let aiBubble = null; // 글자가 쌓일 말풍선. 도구 이벤트가 끼면 새 말풍선을 엽니다.
+    try {
+      const res = await fetch("/agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, ...(conversationId && { conversationId }) }),
+      });
+      // 스트리밍 시작 전 에러(400/404/409)는 일반 JSON 응답으로 옵니다.
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        add("error", `HTTP ${res.status}: ${[].concat(err.message ?? "").join(", ")}`);
+        return;
+      }
+
+      const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += value;
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop(); // 마지막 조각은 아직 덜 온 이벤트일 수 있어 남겨둡니다.
+        for (const chunk of chunks) {
+          const type = chunk.match(/^event: (.*)$/m)?.[1];
+          const data = JSON.parse(chunk.match(/^data: (.*)$/m)?.[1] ?? "{}");
+          switch (type) {
+            case "conversation":
+              conversationId = data.conversationId;
+              $("cid").textContent = conversationId;
+              break;
+            case "text":
+              aiBubble ??= add("msg ai", "");
+              aiBubble.textContent += data.delta;
+              $("log").scrollTop = $("log").scrollHeight;
+              break;
+            case "tool":
+              add("tool", `🔧 ${data.name}(${JSON.stringify(data.input)})${data.isError ? " → 에러" : ""}`);
+              aiBubble = null;
+              break;
+            case "approval_required":
+              showApproval(data);
+              aiBubble = null;
+              break;
+            case "error":
+              add("error", `⚠️ ${data.message}`);
+              break;
+          }
+        }
+      }
+    } catch (e) {
+      add("error", `⚠️ ${e.message}`);
+    } finally {
+      setBusy(false);
+      $("input").focus();
+    }
+  }
+
+  function showApproval({ name, input }) {
+    const box = document.createElement("div");
+    box.className = "approval";
+    box.innerHTML = `<strong>승인이 필요합니다: ${name}</strong><pre></pre>`;
+    box.querySelector("pre").textContent = JSON.stringify(input, null, 2);
+    for (const [label, decision, cls] of [["승인", "approve", ""], ["거절", "reject", "secondary"]]) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.className = cls;
+      btn.style.marginRight = "8px";
+      btn.onclick = () => {
+        box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+        add("msg me", label);
+        send({ decision });
+      };
+      box.append(btn);
+    }
+    $("log").append(box);
+    $("log").scrollTop = $("log").scrollHeight;
+  }
+
+  $("form").onsubmit = (e) => {
+    e.preventDefault();
+    const message = $("input").value.trim();
+    if (!message || busy) return;
+    $("input").value = "";
+    add("msg me", message);
+    send({ message });
+  };
+
+  $("reset").onclick = () => {
+    conversationId = null;
+    $("cid").textContent = "새 대화";
+    $("log").replaceChildren();
+  };
+</script>
+</body>
+</html>
