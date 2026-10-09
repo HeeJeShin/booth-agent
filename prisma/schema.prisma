@@ -46,6 +46,9 @@ model Application {
   id            Int               @id @default(autoincrement())
   exhibition    Exhibition        @relation(fields: [exhibitionId], references: [id])
   exhibitionId  Int               // 외래키(FK): 어떤 전시회에 대한 신청인지
+  // 누가 신청했는지. 2단계부터 로그인한 사용자만 신청할 수 있고, 본인 것만 조회·취소합니다.
+  user          User              @relation(fields: [userId], references: [id])
+  userId        Int
   companyName   String
   contactName   String
   contactEmail  String
@@ -55,6 +58,41 @@ model Application {
   status        ApplicationStatus @default(PENDING)
   createdAt     DateTime          @default(now())
 
-  // "이 전시회의 신청 목록" 조회가 잦으므로 인덱스를 둡니다.
+  // "이 전시회의 신청 목록", "내 신청 목록" 조회가 잦으므로 인덱스를 둡니다.
   @@index([exhibitionId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// 2단계: 인증
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id            Int            @id @default(autoincrement())
+  email         String         @unique // 같은 이메일로 두 번 가입 못 하도록 DB가 보장
+  // ⚠️ 비밀번호 원문은 절대 저장하지 않습니다. 단방향 해시(scrypt)만 저장합니다.
+  //    DB가 유출돼도 원래 비밀번호를 알아낼 수 없게 하려는 것.
+  passwordHash  String
+  name          String
+  applications  Application[]
+  refreshTokens RefreshToken[]
+  createdAt     DateTime       @default(now())
+}
+
+// 리프레시 토큰을 DB에 저장하는 이유:
+//   JWT는 서버가 "발급 후 취소"를 못 합니다(만료 전까지 유효). 그래서
+//   - 액세스 토큰은 15분으로 짧게 → 유출돼도 피해 시간이 짧음
+//   - 리프레시 토큰은 DB에 기록 → 로그아웃·탈취 의심 시 서버가 무효화할 수 있음
+// ⚠️ 토큰 원문이 아니라 해시만 저장합니다(비밀번호와 같은 이유).
+model RefreshToken {
+  id         Int       @id @default(autoincrement())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  // 사용(회전)되거나 로그아웃되면 시각을 기록. null이면 아직 쓸 수 있는 토큰.
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
 }
