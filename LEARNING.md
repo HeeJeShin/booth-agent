@@ -5,6 +5,47 @@
 
 ---
 
+## 0. Swagger 항목별 코드 지도 🗺️
+
+Swagger(http://localhost:3100/docs)에서 API를 하나 실행해 보고, 아래 순서대로 파일을 따라가 보세요.
+
+**모든 요청의 공통 흐름**
+```
+요청 → main.ts (ValidationPipe가 DTO 검사) → *.controller.ts (URL 연결) → *.service.ts (로직) → Prisma → PostgreSQL
+                                                                                ↑ prisma/schema.prisma가 테이블 정의
+```
+모듈 연결은 `src/app.module.ts` → 각 `*.module.ts`, DB 연결은 `src/prisma/prisma.service.ts`에서 봅니다.
+
+### exhibitions (전시회)
+
+| Swagger 항목 | 읽는 순서 | 여기서 볼 것 |
+|---|---|---|
+| `GET /exhibitions` | `src/exhibitions/exhibitions.controller.ts:12` → `exhibitions.service.ts:10` `findAll()` | **N+1 문제**를 `groupBy`로 피하는 법, 남은 부스 수를 저장하지 않고 **계산**하는 이유 |
+| `GET /exhibitions/{id}` | `exhibitions.controller.ts:18` → `exhibitions.service.ts:28` `findOne()` | `ParseIntPipe`(문자열 "1" → 숫자 1), 없으면 `NotFoundException` → **404** |
+
+### applications (참가 신청)
+
+| Swagger 항목 | 읽는 순서 | 여기서 볼 것 |
+|---|---|---|
+| `POST /applications` | `src/applications/dto/create-application.dto.ts` → `applications.controller.ts:13` → `applications.service.ts:14` `create()` | DTO 검증(`@IsEmail` 등) → **400**, **트랜잭션 + `SELECT ... FOR UPDATE`**로 초과 판매 막기, 금액은 서버가 계산, 남은 부스 부족 → **409** |
+| `GET /applications/{id}` | `applications.controller.ts:18` → `applications.service.ts:59` `findOne()` | 위 전시회 상세와 같은 패턴 (복습용) |
+| `PATCH /applications/{id}/cancel` | `applications.controller.ts:24` → `applications.service.ts:68` `cancel()` | 행을 지우지 않고 상태만 바꾸는 **소프트 삭제**, 이미 취소됨 → **409** |
+
+> 💡 Swagger에서 일부러 실패시켜 보세요: 이메일 형식 틀리기(400), 없는 id(404), 남은 부스보다 많이 신청(409), 같은 신청 두 번 취소(409).
+
+### agent (AI 에이전트)
+
+| Swagger 항목 | 읽는 순서 | 여기서 볼 것 |
+|---|---|---|
+| `POST /agent/chat` | ① `src/agent/dto/chat-request.dto.ts` → ② `agent.controller.ts:31` → ③ `agent.service.ts:84` `loop()` → ④ `agent.tools.ts:88` `run()` → ⑤ `conversation.store.ts` | ② **SSE**(응답을 열어두고 `res.write`로 조금씩 보내기), ③ **에이전트 루프**(`stop_reason`에 따라 분기, 쓰기 도구는 **승인 대기**), ④ 도구가 결국 위의 **같은 서비스**를 호출, ⑤ 대화 기록을 서버가 들고 있는 이유 |
+| (같은 API, 목 모드) | `agent.service.ts:40` `getClient()` → `src/agent/mock-client.ts` | `.env`의 `USE_MOCK_AGENT=true`면 가짜 모델로 돎 |
+| (같은 API, 프롬프트) | `src/agent/system-prompt.ts` | 모델에게 주는 역할·규칙 |
+
+> 💡 에이전트는 Swagger보다 **http://localhost:3100/playground.html**에서 보는 게 편합니다(`public/playground.html`, fetch로 SSE 읽는 프론트 코드).
+> 테스트 코드(`*.spec.ts`)도 같이 읽으면 "이 코드가 무엇을 보장해야 하는지"가 보입니다.
+
+---
+
 ## 1. NestJS 기본 구조
 
 | 개념 | 하는 일 | 프론트 비유 | 파일 |
@@ -103,8 +144,9 @@
 
 ## 6. 테스트
 
-`pnpm test` (Vitest, 8개)
+`pnpm test` (Vitest, 12개)
 - 에이전트 루프: 가짜 Claude 응답으로 "쓰기 도구는 승인 전 실행 안 됨", "거절 시 is_error 결과", "MAX_STEPS에서 멈춤" 확인
+- 목 모드: 가짜 모델을 진짜 루프에 끼워 조회 → 승인 → 실행 흐름 확인 (`mock-client.spec.ts`)
 - 도구 검증: 잘못된 이메일, 가격·상태 끼워 넣기, 부스 수 초과가 서비스까지 못 가는지 확인
 
 ⚠️ 실제 모델을 부르지 않고 가짜 응답으로 테스트하는 이유: 비용이 들지 않고 결과가 항상 같습니다.

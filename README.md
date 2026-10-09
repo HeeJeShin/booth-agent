@@ -49,10 +49,12 @@ NestJS 12 · TypeScript · PostgreSQL 17 · Prisma 7 · Anthropic SDK (Claude Op
 ```bash
 pnpm install              # 의존성 설치 + Prisma Client 생성
 cp .env.example .env      # ANTHROPIC_API_KEY 입력 (에이전트 기능에만 필요)
+                          # 키 없이 해보려면 USE_MOCK_AGENT=true (규칙 기반 가짜 모델, 비용 0원)
 pnpm db:up                # PostgreSQL 컨테이너 실행 (Docker Desktop 필요)
 pnpm db:migrate           # 테이블 생성
 pnpm db:seed              # 샘플 전시회 3개
 pnpm start:dev            # http://localhost:3100
+                          # 에이전트 테스트 화면: http://localhost:3100/playground.html
 ```
 - API 문서: http://localhost:3100/docs
 - 테스트: `pnpm test`

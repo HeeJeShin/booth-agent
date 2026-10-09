@@ -3,11 +3,14 @@
 // ─────────────────────────────────────────────────────────────
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { join } from "path";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // <NestExpressApplication>: Express 전용 기능(useStaticAssets 등)을 쓰기 위한 타입 지정
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // ⭐ 전역 ValidationPipe: 컨트롤러에 들어오는 body/query를 DTO 클래스 규칙으로 검사합니다.
   //  - whitelist: DTO에 없는 필드는 조용히 제거 (예: 클라이언트가 status: "CONFIRMED"를 몰래 보내도 무시)
@@ -28,6 +31,9 @@ async function bootstrap() {
     .setDescription("전시 부스 참가신청 API + AI 에이전트")
     .build();
   SwaggerModule.setup("docs", app, SwaggerModule.createDocument(app, config));
+
+  // public/ 폴더의 파일을 그대로 서빙 → 에이전트 테스트 화면 http://localhost:3100/playground.html
+  app.useStaticAssets(join(__dirname, "..", "public"));
 
   await app.listen(process.env.PORT ?? 3100);
 }
